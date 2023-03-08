@@ -1,18 +1,14 @@
 package com.programmersbox.piwatchdog
 
 import com.github.ajalt.clikt.core.CliktCommand
-import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
-import com.github.ajalt.clikt.parameters.types.path
 import io.ktor.client.*
-import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
-import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.util.*
 import kotlinx.coroutines.*
@@ -56,17 +52,13 @@ fun checkForUpdate(oldVersion: String, newVersion: String): Boolean = try {
 }
 
 class WatchDog : CliktCommand() {
-
-    val jarPath: String by option("-j", help = "Path to Jar")
-        .required()
-
-    val updateUrl: String by option("-u", help = "Update Url")
-        .required()
+    val jarPath: String by option("-j", help = "Path to Jar").required()
+    val updateUrl: String by option("-u", help = "Update Url").required()
 
     override fun run() = runBlocking {
         val versionFile = File("version.txt")
         if (!versionFile.exists()) versionFile.createNewFile()
-        var version = versionFile.readText().ifEmpty { "1.0.0" }
+        var version = versionFile.readText().ifEmpty { "0.0.1" }
         println("Running PiWatchDog version $version")
 
         val json = Json {
@@ -79,6 +71,9 @@ class WatchDog : CliktCommand() {
         val client = HttpClient(CIO) {
             install(ContentNegotiation) { json(json) }
             expectSuccess = true
+            install(HttpTimeout) {
+                requestTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
+            }
         }
 
         var process: Process? = null
@@ -88,30 +83,42 @@ class WatchDog : CliktCommand() {
         val versionCheck = async {
             while (true) {
                 delay(30000)
-                val response = client.get(updateUrl)
-                    .bodyAsText()
-                    .let { json.decodeFromString<AppUpdates>(it) }
-                println(response)
-                if (response.update_real_version?.let { checkForUpdate(version, it) } == true) {
-                    println("Update!")
-                    version = response.update_real_version
-                    versionFile.writeText(response.update_real_version)
-                    process?.destroy()
-                    isServerRunning.emit(false)
-                    //TODO: Download server
-                    println("Downloading Server")
-                    delay(10000)
-                    val httpResponse: HttpResponse = client.get(updateUrl) {
-                        onDownload { bytesSentTotal, contentLength ->
-                            val progress = (bytesSentTotal * 100f / contentLength).roundToInt()
-                            println("$progress%")
+                try {
+                    val response = client.get(updateUrl)
+                        .bodyAsText()
+                        .let { json.decodeFromString<ServerUpdates>(it) }
+                    println(response)
+                    if (checkForUpdate(version, response.version)) {
+                        println("Update!")
+                        version = response.version
+                        versionFile.writeText(response.version)
+                        process?.destroy()
+                        isServerRunning.emit(false)
+                        println("Downloading Server")
+                        delay(10000)
+                        val httpResponse: HttpResponse = client.get(response.jarUrl) {
+                            var prog = 0
+                            onDownload { bytesSentTotal, contentLength ->
+                                val progress = (bytesSentTotal * 100f / contentLength).roundToInt()
+                                if (prog != progress) {
+                                    prog = progress
+                                    println("Downloading: $progress%")
+                                }
+                            }
+                        }
+                        val responseBody: ByteArray = httpResponse.bodyAsChannel().toByteArray()
+                        println(responseBody)
+                        File(jarPath).writeBytes(responseBody)
+                        println("Downloaded")
+                        isServerRunning.emit(true)
+                    } else {
+                        if(process?.isAlive != true) {
+                            process?.destroy()
+                            isServerRunning.emit(true)
                         }
                     }
-                    val responseBody: ByteArray = httpResponse.bodyAsChannel().toByteArray()
-                    println(responseBody)
-                    //file.writeBytes(responseBody)
-                    println("Downloaded")
-                    isServerRunning.emit(true)
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
         }
@@ -161,17 +168,7 @@ object RunCommand {
 }
 
 @Serializable
-data class AppUpdates(
-    val update_version: Double?,
-    val update_real_version: String?,
-    val update_url: String?,
-    val manga_file: String?,
-    val anime_file: String?,
-    val novel_file: String?,
-    val animetv_file: String?,
-    val otakumanager_file: String?,
-    val manga_no_firebase_file: String?,
-    val anime_no_firebase_file: String?,
-    val novel_no_firebase_file: String?,
-    val animetv_no_firebase_file: String?,
+data class ServerUpdates(
+    val version: String,
+    val jarUrl: String
 )

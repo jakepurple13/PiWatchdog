@@ -32,5 +32,16 @@ kotlin {
 }
 
 application {
-    mainClass.set("MainKt")
+    mainClass.set("com.programmersbox.piwatchdog.MainKt")
+}
+
+val jar by tasks.getting(Jar::class) {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    this.archiveFileName.set("piwatchdog.jar")
+    manifest {
+        attributes["Main-Class"] = "com.programmersbox.piwatchdog.MainKt"
+    }
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) }) {
+        exclude("META-INF/*.RSA", "META-INF/*.SF", "META-INF/*.DSA")
+    }
 }
