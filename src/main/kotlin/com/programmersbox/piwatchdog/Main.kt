@@ -21,6 +21,7 @@ import java.io.File
 import java.io.InputStreamReader
 import java.util.stream.Collectors
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.days
 
 fun main(args: Array<String>) = runBlocking {
     println("Program arguments: ${args.joinToString()}")
@@ -82,7 +83,7 @@ class WatchDog : CliktCommand() {
 
         val versionCheck = async {
             while (true) {
-                delay(30000)
+                delay(1.days.inWholeMilliseconds)
                 try {
                     val response = client.get(updateUrl)
                         .bodyAsText()
@@ -119,6 +120,16 @@ class WatchDog : CliktCommand() {
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
+                }
+            }
+        }
+
+        launch {
+            while(true) {
+                delay(30000)
+                if(process?.isAlive != true) {
+                    process?.destroy()
+                    isServerRunning.emit(isServerRunning.value)
                 }
             }
         }
