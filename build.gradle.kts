@@ -21,6 +21,7 @@ dependencies {
     implementation("io.ktor:ktor-client-cio:$ktorVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
     implementation("com.github.ajalt.clikt:clikt:3.5.2")
+    implementation("me.tongfei:progressbar:0.9.5")
 }
 
 tasks.test {
