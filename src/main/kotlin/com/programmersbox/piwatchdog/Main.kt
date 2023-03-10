@@ -17,13 +17,23 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import me.tongfei.progressbar.ProgressBarBuilder
+import java.io.BufferedReader
 import java.io.File
+import java.io.InputStreamReader
+import java.util.stream.Collectors
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.days
 
 const val LOG_COLOR = 0x00ff00
 
 fun main(args: Array<String>) = runBlocking {
+    runPythonCodeAsync(
+        "/home/pi/Desktop/einkscreendisplay.py",
+        "Starting PillCounter",
+        "Please Wait",
+        "Taking Some Time",
+        "Almost!"
+    ).await()
     println("Program arguments: ${args.joinToString()}".color(LOG_COLOR))
     WatchDog().main(args)
 }
@@ -194,3 +204,16 @@ object AnsiColor {
 
 fun String.color(color: Int) = AnsiColor.colorText(this, color)
 fun String.color(r: Int, g: Int, b: Int) = AnsiColor.colorText(this, r, g, b)
+
+suspend fun runPythonCodeAsync(fileName: String, vararg args: String) =
+    runAsync("python3", fileName, *args)
+
+@Suppress("BlockingMethodInNonBlockingContext")
+suspend fun runAsync(vararg command: String) = coroutineScope {
+    async {
+        val process = Runtime.getRuntime().exec(command)
+        process.waitFor()
+        val reader = BufferedReader(InputStreamReader(process.inputStream))
+        reader.lines().collect(Collectors.joining("\n"))
+    }
+}
